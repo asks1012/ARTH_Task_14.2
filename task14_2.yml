@@ -1,0 +1,69 @@
+- hosts: localhost
+  vars_prompt:
+  - name: "container_name"
+    prompt: "Enter the name for the container"
+    private: no
+  tasks:
+  - name: "Configuring YUM repository for docker"
+    yum_repository:
+      name: docker
+      description: yum repo for docker
+      baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+      gpgcheck: no
+  - name: "Checking docker is installed or not"
+    command: rpm -q docker-ce
+    ignore_errors: yes
+    register: x
+    changed_when: false
+  - name: "Installing Docker"
+    command: yum install docker-ce -y --nobest
+    when: x.rc != 0
+  - name: "Starting and Enabling Docker"
+    service:
+      name: docker
+      state: started
+      enabled: yes
+  - name: "Checking python is installed or not"
+    yum:
+      name: python36
+      state: present
+  - name: "Installing docker python library"
+    pip:
+      name: docker
+  - name: "Pulling asks1012/centos-ssh:v1 docker image from docker hub"
+    docker_image:
+      name: asks1012/centos-ssh:v1
+      state: present
+  - name: "Running the asks1012/centos-ssh:v1 docker image"
+    docker_container:
+      name: "{{ container_name }}"
+      image: asks1012/centos-ssh:v1
+      interactive: yes
+      restart: yes
+      ports:
+        - "2000:80"
+      state: started
+      detach: yes
+      tty: yes
+    register: docker_register
+  - debug:
+       var: docker_register.container.NetworkSettings.IPAddress
+  - name: "Updating Inventory file"
+    blockinfile:
+      path: /root/inventory.txt
+      block: |
+        [docker]
+        {{  docker_register.container.NetworkSettings.IPAddress }} ansible_user=root ansible_ssh_pass=password
+
+- hosts: docker
+  tasks:
+    - name: "Installing httpd software"
+      package:
+        name: httpd
+        state: present
+    - name: "Copying HTML file content"
+      copy:
+        dest: /var/www/html/index.html
+        content: <h1> Server for task14.2 </h1>
+    - name: "Starting the httpd server"
+      command: /usr/sbin/httpd
